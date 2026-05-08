@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>오늘의 날씨 - 부산/경주</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 min-h-screen flex items-center justify-center">
+    <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md">
+        <h1 class="text-2xl font-bold text-slate-800 mb-6 text-center">실시간 단기 예보</h1>
+        
+        <div id="weather-info" class="space-y-4">
+            <p class="text-slate-500 text-center">데이터를 불러오는 중...</p>
+        </div>
+
+        <button onclick="fetchWeather()" class="w-full mt-8 bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition">
+            날씨 새로고침
+        </button>
+    </div>
+
+    <script>
+        async function fetchWeather() {
+            const infoDiv = document.getElementById('weather-info');
+            
+            try {
+                // Vercel 서버리스 함수로 요청 (CORS와 API 키 보안 해결)
+                const response = await fetch('/api/weather?nx=98&ny=76');
+                const result = await response.json();
+
+                if (result.response && result.response.body) {
+                    const items = result.response.body.items.item;
+                    let html = '<div class="grid grid-cols-1 gap-2">';
+                    
+                    // 주요 데이터(기온, 강수형태 등) 추출
+                    items.forEach(item => {
+                        if(item.category === 'TMP') { // 1시간 기온
+                            html += `<div class="flex justify-between border-b py-2">
+                                        <span class="text-slate-600">현재 기온</span>
+                                        <span class="font-bold text-blue-600">${item.fcstValue}℃</span>
+                                     </div>`;
+                        }
+                        if(item.category === 'REH') { // 습도
+                            html += `<div class="flex justify-between border-b py-2">
+                                        <span class="text-slate-600">습도</span>
+                                        <span class="font-bold">${item.fcstValue}%</span>
+                                     </div>`;
+                        }
+                    });
+                    html += '</div>';
+                    infoDiv.innerHTML = html;
+                } else {
+                    infoDiv.innerHTML = '<p class="text-red-500 text-center">데이터 구조가 올바르지 않습니다.</p>';
+                }
+            } catch (error) {
+                console.error(error);
+                infoDiv.innerHTML = '<p class="text-red-500 text-center">날씨 정보를 가져오는 데 실패했습니다.</p>';
+            }
+        }
+
+        // 페이지 로드 시 호출
+        fetchWeather();
+    </script>
+</body>
+</html>
