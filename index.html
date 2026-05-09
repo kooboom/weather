@@ -3,47 +3,91 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>오늘의 날씨 - 부산/경주</title>
+    <title>현재 위치 날씨</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-slate-50 min-h-screen flex items-center justify-center">
     <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md">
-        <h1 class="text-2xl font-bold text-slate-800 mb-6 text-center">실시간 단기 예보</h1>
+        <h1 class="text-2xl font-bold text-slate-800 mb-2 text-center">실시간 기상 실황</h1>
+        <p id="location-status" class="text-sm text-blue-500 text-center mb-6 font-medium">위치 확인 대기 중...</p>
         
         <div id="weather-info" class="space-y-4">
-            <p class="text-slate-500 text-center">데이터를 불러오는 중...</p>
+            <p class="text-slate-500 text-center">위치 권한을 허용해 주세요.</p>
         </div>
 
-        <button onclick="fetchWeather()" class="w-full mt-8 bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition">
-            날씨 새로고침
+        <button onclick="initWeather()" class="w-full mt-8 bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition disabled:bg-slate-400" id="refreshBtn">
+            현재 위치로 새로고침
         </button>
     </div>
 
     <script>
-        async function fetchWeather() {
+        // 1. 초기화 및 위치 가져오기
+        function initWeather() {
             const infoDiv = document.getElementById('weather-info');
+            const statusText = document.getElementById('location-status');
+            const btn = document.getElementById('refreshBtn');
+
+            btn.disabled = true;
+            statusText.innerText = "GPS 탐색 중... 📍";
+            infoDiv.innerHTML = '<p class="text-slate-500 text-center">위치 정보를 가져오는 중입니다...</p>';
+
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const lat = position.coords.latitude;
+                        const lon = position.coords.longitude;
+                        
+                        // 위경도를 기상청 X, Y 좌표로 변환
+                        const grid = dfs_xy_conv("toXY", lat, lon);
+                        statusText.innerText = `현재 위치 격자 (X: ${grid.x}, Y: ${grid.y})`;
+                        
+                        fetchWeather(grid.x, grid.y);
+                    },
+                    (error) => {
+                        btn.disabled = false;
+                        statusText.innerText = "위치 권한 거부됨 ❌";
+                        infoDiv.innerHTML = '<p class="text-red-500 text-center">브라우저 설정에서 위치 권한을 허용해 주세요.</p>';
+                    }
+                );
+            } else {
+                infoDiv.innerHTML = '<p class="text-red-500 text-center">위치 정보를 지원하지 않는 브라우저입니다.</p>';
+            }
+        }
+
+        // 2. Vercel API 호출 및 화면 렌더링
+        async function fetchWeather(nx, ny) {
+            const infoDiv = document.getElementById('weather-info');
+            const btn = document.getElementById('refreshBtn');
+            const { baseDate, baseTime } = getBaseDateTime();
             
             try {
-                // Vercel 서버리스 함수로 요청 (CORS와 API 키 보안 해결)
-                const response = await fetch('/api/weather?nx=98&ny=76');
+                // 파라미터로 격자 좌표와 시간 정보 전달
+                const response = await fetch(`/api/weather?nx=${nx}&ny=${ny}&baseDate=${baseDate}&baseTime=${baseTime}`);
                 const result = await response.json();
+                
+                btn.disabled = false;
 
                 if (result.response && result.response.body) {
                     const items = result.response.body.items.item;
                     let html = '<div class="grid grid-cols-1 gap-2">';
                     
-                    // 주요 데이터(기온, 강수형태 등) 추출
                     items.forEach(item => {
-                        if(item.category === 'TMP') { // 1시간 기온
+                        if(item.category === 'T1H') { // 실시간 기온
                             html += `<div class="flex justify-between border-b py-2">
                                         <span class="text-slate-600">현재 기온</span>
-                                        <span class="font-bold text-blue-600">${item.fcstValue}℃</span>
+                                        <span class="font-bold text-blue-600">${item.obsrValue}℃</span>
                                      </div>`;
                         }
                         if(item.category === 'REH') { // 습도
                             html += `<div class="flex justify-between border-b py-2">
                                         <span class="text-slate-600">습도</span>
-                                        <span class="font-bold">${item.fcstValue}%</span>
+                                        <span class="font-bold">${item.obsrValue}%</span>
+                                     </div>`;
+                        }
+                        if(item.category === 'WSD') { // 풍속
+                            html += `<div class="flex justify-between border-b py-2">
+                                        <span class="text-slate-600">풍속</span>
+                                        <span class="font-bold">${item.obsrValue}m/s</span>
                                      </div>`;
                         }
                     });
@@ -54,12 +98,61 @@
                 }
             } catch (error) {
                 console.error(error);
+                btn.disabled = false;
                 infoDiv.innerHTML = '<p class="text-red-500 text-center">날씨 정보를 가져오는 데 실패했습니다.</p>';
             }
         }
 
-        // 페이지 로드 시 호출
-        fetchWeather();
+        // 3. 기상청 API 호출 시간 계산 (매시 45분 기준)
+        function getBaseDateTime() {
+            const now = new Date();
+            if (now.getMinutes() < 45) {
+                now.setHours(now.getHours() - 1);
+            }
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            const hours = String(now.getHours()).padStart(2, '0');
+
+            return {
+                baseDate: `${year}${month}${day}`,
+                baseTime: `${hours}00`
+            };
+        }
+
+        // 4. 위경도 -> 기상청 격자(X, Y) 변환 공식
+        function dfs_xy_conv(code, v1, v2) {
+            const RE = 6371.00877; const GRID = 5.0; const SLAT1 = 30.0; const SLAT2 = 60.0;
+            const OLON = 126.0; const OLAT = 38.0; const XO = 43; const YO = 136;
+            const DEGRAD = Math.PI / 180.0; const RADDEG = 180.0 / Math.PI;
+
+            const re = RE / GRID; const slat1 = SLAT1 * DEGRAD; const slat2 = SLAT2 * DEGRAD;
+            const olon = OLON * DEGRAD; const olat = OLAT * DEGRAD;
+
+            let sn = Math.tan(Math.PI * 0.25 + slat2 * 0.5) / Math.tan(Math.PI * 0.25 + slat1 * 0.5);
+            sn = Math.log(Math.cos(slat1) / Math.cos(slat2)) / Math.log(sn);
+            let sf = Math.tan(Math.PI * 0.25 + slat1 * 0.5);
+            sf = Math.pow(sf, sn) * Math.cos(slat1) / sn;
+            let ro = Math.tan(Math.PI * 0.25 + olat * 0.5);
+            ro = re * sf / Math.pow(ro, sn);
+            let rs = {};
+            
+            if (code === "toXY") {
+                rs['lat'] = v1; rs['lng'] = v2;
+                let ra = Math.tan(Math.PI * 0.25 + (v1) * DEGRAD * 0.5);
+                ra = re * sf / Math.pow(ra, sn);
+                let theta = v2 * DEGRAD - olon;
+                if (theta > Math.PI) theta -= 2.0 * Math.PI;
+                if (theta < -Math.PI) theta += 2.0 * Math.PI;
+                theta *= sn;
+                rs['x'] = Math.floor(ra * Math.sin(theta) + XO + 0.5);
+                rs['y'] = Math.floor(ro - ra * Math.cos(theta) + YO + 0.5);
+            }
+            return rs;
+        }
+
+        // 페이지 로드 시 즉시 위치 정보 획득 시작
+        window.onload = initWeather;
     </script>
 </body>
 </html>
