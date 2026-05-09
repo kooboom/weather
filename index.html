@@ -85,11 +85,17 @@
                                      </div>`;
                         }
                         if(item.category === 'WSD') { // 풍속
-                            html += `<div class="flex justify-between border-b py-2">
-                                        <span class="text-slate-600">풍속</span>
-                                        <span class="font-bold">${item.obsrValue}m/s</span>
-                                     </div>`;
-                        }
+    // 👇 중요: fcstValue 대신 obsrValue를 참조해야 합니다!
+    const windSpeed = item.obsrValue; 
+
+    // ✅ 코드 팁: 데이터가 실제로 누락될 경우를 대비해 `--` 표시를 하는 코드를 추가하면 더 좋습니다.
+    const displayWindSpeed = windSpeed ? windSpeed : '--'; 
+
+    html += `<div class="flex justify-between border-b py-2">
+                <span class="text-slate-600">풍속</span>
+                <span class="font-bold">${displayWindSpeed}m/s</span>
+             </div>`;
+}
                     });
                     html += '</div>';
                     infoDiv.innerHTML = html;
